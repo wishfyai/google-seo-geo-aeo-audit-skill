@@ -1,12 +1,27 @@
 ---
 name: google-audit
-description: Audit any website against Google's published best practices for Search, AI Overviews, AI Mode, Core Web Vitals, plus the cross-LLM retrieval layer (ChatGPT Search, Perplexity, Microsoft Copilot, Claude web search). Every finding cites the Google or provider doc it traces to; thresholds are Google's verbatim numbers (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1). Verdict is Not Ready / Competitive / Leading. Use when user asks to "audit website", "google audit", "google best practices", "is my site AI-search ready", "core web vitals check", "crawlability audit", "AI overviews readiness", "schema deprecation check", or provides a domain to evaluate. Do NOT use for keyword research, backlink analysis, content writing, or ranking strategy — this skill audits compliance with published Google guidance only.
+description: SEO + GEO + AEO audit for any website. Maps every check to Google's published best practices for Search, AI Overviews, AI Mode, Core Web Vitals (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1), structured data, and the cross-LLM retrieval layer (ChatGPT Search via OAI-SearchBot, Perplexity, Microsoft Copilot, Claude web search). Every finding cites the Google or provider doc it traces to. Verdict is Not Ready / Competitive / Leading. Use when the user asks to "audit website", "google audit", "SEO audit", "GEO audit", "AEO audit", "google best practices", "is my site AI-search ready", "AI Overviews readiness", "core web vitals check", "crawlability audit", "robots.txt review", "schema deprecation check", "are my AI bots allowed", "are LLM crawlers allowed", or provides a domain or URL to evaluate. Do NOT use for keyword research, backlink analysis, content writing, competitor analysis, or ranking strategy — this skill audits compliance with published Google guidance only.
 user-invokable: true
 argument-hint: <domain-or-url> [--max-pages N]
 license: MIT
 metadata:
   version: 0.1.0
   category: seo
+  keywords:
+    - seo
+    - geo
+    - aeo
+    - ai-seo
+    - ai-search
+    - ai-overviews
+    - core-web-vitals
+    - google-search
+    - lighthouse
+    - structured-data
+    - chatgpt-search
+    - perplexity
+    - microsoft-copilot
+    - audit
 ---
 
 # google-audit

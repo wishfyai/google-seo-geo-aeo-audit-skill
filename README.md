@@ -1,11 +1,24 @@
-# google-audit
+# google-audit — SEO + GEO + AEO audit for Claude Code
 
 [![skills.sh](https://skills.sh/b/wishfyai/google-seo-geo-aeo-audit-skill)](https://skills.sh/wishfyai/google-seo-geo-aeo-audit-skill)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Claude Code skill](https://img.shields.io/badge/Claude%20Code-skill-orange)](https://code.claude.com/docs/en/skills)
 
-A Claude Code skill that audits any website against the best practices **Google itself publishes** for Search, AI Overviews, AI Mode, and Core Web Vitals — plus the cross-LLM retrieval layer that gates visibility in ChatGPT Search, Perplexity, Microsoft Copilot, and Claude web search.
+> Audit any website against the best practices **Google itself publishes** for Search, AI Overviews, AI Mode, and Core Web Vitals — plus the cross-LLM retrieval layer that gates visibility in **ChatGPT Search, Perplexity, Microsoft Copilot, and Claude web search**.
 
-Every finding cites the Google or provider doc it traces to. Thresholds are Google's verbatim numbers. The scoring rubric is **Not Ready / Competitive / Leading** — not a Lighthouse 0–100.
+**Why this exists:** there are dozens of SEO audit tools. None of them strictly trace every check to a Google-published doc URL, and almost none audit the AI retrieval-bot layer (OAI-SearchBot, PerplexityBot, ChatGPT-User, Perplexity-User) that decides whether your site appears in AI answers at all. This skill does both, with severity that maps to action (MUST / SHOULD / NICE) and a single-line verdict: **Not Ready / Competitive / Leading**.
+
+Every finding cites the Google or provider doc it traces to. Thresholds are Google's verbatim numbers (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1) — not a Lighthouse 0–100.
+
+**What it covers:**
+
+- ✅ **SEO** — Google Search Essentials, crawlability, indexability, canonicalization, sitemaps, hreflang
+- ✅ **GEO** (Generative Engine Optimization) — visibility in AI Overviews / AI Mode and across LLM-powered search
+- ✅ **AEO** (Answer Engine Optimization) — passage extraction, entity grounding, structured data
+- ✅ **Core Web Vitals** — LCP / INP / CLS / TTFB / FCP via PageSpeed Insights + CrUX field data
+- ✅ **Structured data** — JSON-LD validation, deprecated-type detection (HowTo, FAQPage non-gov/health, sitelinks SearchAction), self-serving review detection
+- ✅ **Cross-LLM bot access** — OAI-SearchBot, ChatGPT-User, PerplexityBot, Perplexity-User, Bingbot allow-list checks
+- ✅ **Security** — HTTPS, mixed content, robots.txt size + UTF-8 + asset-block detection
 
 ## Install
 
