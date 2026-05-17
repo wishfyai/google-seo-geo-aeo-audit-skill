@@ -17,6 +17,21 @@ Then in Claude Code:
 /google-audit https://example.com --max-pages 25
 ```
 
+### Or run it directly from the command line
+
+After `npx skills add` (or after cloning the repo), there is a one-shot
+orchestration script:
+
+```bash
+SKILL_DIR=./.agents/skills/google-audit   # path npx skills add lands the skill at
+pip install -r "$SKILL_DIR/requirements.txt"
+bash "$SKILL_DIR/scripts/run_audit.sh" https://wishfy.ai --max-pages 10
+```
+
+It writes `audit.json` + `audit.md` to `/tmp/google-audit-<timestamp>/`.
+For richer field data, set `PAGESPEED_API_KEY` (free from Google) and/or
+`npm install -g lighthouse`.
+
 ## What it does
 
 1. **Crawls the site** — sitemap.xml first, falling back to BFS, respecting `robots.txt`, capped at `--max-pages` (default 50).

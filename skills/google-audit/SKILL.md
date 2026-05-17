@@ -27,19 +27,22 @@ Do NOT use for: keyword research, backlink analysis, content writing, competitor
 
 ## How it runs
 
-The pipeline is six steps. All scripts ship inside the skill folder
-alongside this SKILL.md. **First locate the skill directory** so every
-command resolves correctly regardless of the user's cwd:
+**Preferred — one-shot orchestration:**
 
 ```bash
-# SKILL_DIR is the absolute path to the folder containing this SKILL.md.
-# Most agent harnesses set CLAUDE_SKILL_DIR or similar; if not, derive it
-# from the path you used to load SKILL.md.
 SKILL_DIR="${CLAUDE_SKILL_DIR:-$(dirname "$(readlink -f "${BASH_SOURCE[0]:-$0}")")}"
-
-# Install Python deps once (idempotent)
 pip install -q -r "$SKILL_DIR/requirements.txt"
+bash "$SKILL_DIR/scripts/run_audit.sh" "$URL" --max-pages "${MAX_PAGES:-50}"
 ```
+
+`run_audit.sh` runs all six steps below and writes `audit.json` + `audit.md`
+to `/tmp/google-audit-<timestamp>/`. Pass `--out DIR` to override the
+location, `--no-lighthouse` to skip the Lighthouse CLI step, `--no-psi`
+to skip PageSpeed Insights.
+
+The six-step manual breakdown below is for when you need to invoke a
+single step (e.g. only re-render after editing the JSON, or only re-run
+schema validation after a deploy).
 
 ### 0. Check prerequisites
 
@@ -170,7 +173,7 @@ The skill never emits outdated guidance. `docs/rules.yaml` reflects the May 2026
 
 ## Limits and honest disclosure
 
-- **Field data (CrUX) requires real traffic.** Low-traffic sites get `null` CrUX values; Lighthouse lab data is the fallback but is synthetic.
+- **Field data (CrUX) requires real traffic.** Low-traffic and newer sites get `null` CrUX values for LCP/INP/CLS — Google needs enough real-user data before they publish field metrics. This is **expected and not a failure**: the rules engine marks these rules as `skipped`, not `fail`. Install Lighthouse CLI (`npm install -g lighthouse`) for synthetic lab-data fallback when CrUX is unavailable.
 - **AI-citation monitoring is out of scope.** This skill audits compliance, not whether AI engines actually cite the site — that needs third-party tools.
 - **The cross-LLM bot list evolves.** OpenAI/Anthropic/Perplexity publish new agents and rename existing ones; treat the user-agent strings in `robots_inspect.py` as a snapshot, not a promise.
 - **No magic AI-only files.** Google has explicitly stated no AI-specific markup is required. `llms.txt` is reported for presence only.
