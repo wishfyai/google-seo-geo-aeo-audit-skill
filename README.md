@@ -7,7 +7,7 @@ Every finding cites the Google or provider doc it traces to. Thresholds are Goog
 ## Install
 
 ```bash
-npx skills add https://github.com/<your-user>/google-audit --skill google-audit
+npx skills add https://github.com/wishfyai/google-seo-geo-aeo-audit-skill --skill google-audit
 ```
 
 Then in Claude Code:

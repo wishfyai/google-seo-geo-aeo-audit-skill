@@ -34,18 +34,20 @@ git commit -m "Initial commit: google-audit skill v0.1.0
 doc. Thresholds are Google's verbatim numbers. Verdict: Not Ready /
 Competitive / Leading."
 
-# Create the GitHub repo (requires gh CLI authenticated)
-gh repo create google-audit --public \
-  --description "Audit any website against Google's published best practices for Search, AI Overviews, AI Mode, Core Web Vitals, and cross-LLM retrieval (ChatGPT Search, Perplexity, Copilot, Claude). Every finding cites a Google doc." \
-  --source=. --remote=origin --push
+# Repo was created via the GitHub web UI under the wishfyai org as
+# `google-seo-geo-aeo-audit-skill`. SSH push uses the wishfy key alias
+# configured in ~/.ssh/config (Host github-wishfy).
 ```
 
-If you don't have `gh` installed: create the repo manually at https://github.com/new (name: `google-audit`, public), then:
+If you ever need to recreate it: create the empty repo manually at
+https://github.com/organizations/wishfyai/repositories/new (name:
+`google-seo-geo-aeo-audit-skill`), do NOT initialize with README/license,
+then:
 
 ```bash
-git remote add origin https://github.com/<your-username>/google-audit.git
+git remote add origin git@github-wishfy:wishfyai/google-seo-geo-aeo-audit-skill.git
 git branch -M main
-git push -u origin main
+GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_wishfy -o IdentitiesOnly=yes" git push -u origin main
 ```
 
 ## 3. Verify install via `npx skills add`
@@ -54,7 +56,7 @@ From a different directory:
 
 ```bash
 cd /tmp
-npx skills add https://github.com/<your-username>/google-audit --skill google-audit
+npx skills add https://github.com/wishfyai/google-seo-geo-aeo-audit-skill --skill google-audit
 ```
 
 The skill should appear in `~/.claude/skills/google-audit/` (or wherever your Claude Code install resolves skills to).
