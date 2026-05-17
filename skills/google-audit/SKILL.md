@@ -27,12 +27,24 @@ Do NOT use for: keyword research, backlink analysis, content writing, competitor
 
 ## How it runs
 
-The pipeline is six steps. Use the **vendor scripts already present in `scripts/`** — they're self-contained and need no extra setup beyond `pip install -r requirements.txt`.
+The pipeline is six steps. All scripts ship inside the skill folder
+alongside this SKILL.md. **First locate the skill directory** so every
+command resolves correctly regardless of the user's cwd:
+
+```bash
+# SKILL_DIR is the absolute path to the folder containing this SKILL.md.
+# Most agent harnesses set CLAUDE_SKILL_DIR or similar; if not, derive it
+# from the path you used to load SKILL.md.
+SKILL_DIR="${CLAUDE_SKILL_DIR:-$(dirname "$(readlink -f "${BASH_SOURCE[0]:-$0}")")}"
+
+# Install Python deps once (idempotent)
+pip install -q -r "$SKILL_DIR/requirements.txt"
+```
 
 ### 0. Check prerequisites
 
 ```bash
-python scripts/google_auth.py --check
+python "$SKILL_DIR/scripts/google_auth.py" --check
 ```
 
 If `PAGESPEED_API_KEY` is missing, warn the user but continue — Lighthouse lab data still works locally; only CrUX field data is unavailable.
@@ -41,7 +53,8 @@ If `PAGESPEED_API_KEY` is missing, warn the user but continue — Lighthouse lab
 
 ```bash
 OUT=/tmp/google-audit-$(date +%s)
-python scripts/crawl_site.py "$URL" --max-pages "${MAX_PAGES:-50}" --out "$OUT"
+mkdir -p "$OUT"
+python "$SKILL_DIR/scripts/crawl_site.py" "$URL" --max-pages "${MAX_PAGES:-50}" --out "$OUT"
 ```
 
 This writes `$OUT/crawl.json` with the list of pages. Sitemap-first; falls back to BFS. Respects `robots.txt`.
@@ -49,7 +62,7 @@ This writes `$OUT/crawl.json` with the list of pages. Sitemap-first; falls back 
 ### 2. Site-level inspection
 
 ```bash
-python scripts/robots_inspect.py "$URL" --out "$OUT/robots.json"
+python "$SKILL_DIR/scripts/robots_inspect.py" "$URL" --out "$OUT/robots.json"
 curl -s -L --max-time 10 "$URL/llms.txt" -o "$OUT/llms_txt.txt" 2>/dev/null || true
 ```
 
@@ -59,30 +72,30 @@ For each URL in `$OUT/crawl.json`, create `$OUT/pages/<NNN>-<slug>/` and run:
 
 ```bash
 # Fetch HTML
-python scripts/fetch_page.py "$PAGE_URL" --output "$PAGE_DIR/page.html"
+python "$SKILL_DIR/scripts/fetch_page.py" "$PAGE_URL" --output "$PAGE_DIR/page.html"
 
 # Parse SEO elements
-python scripts/parse_html.py "$PAGE_DIR/page.html" --url "$PAGE_URL" --json > "$PAGE_DIR/parsed.json"
+python "$SKILL_DIR/scripts/parse_html.py" "$PAGE_DIR/page.html" --url "$PAGE_URL" --json > "$PAGE_DIR/parsed.json"
 
 # Inject the page URL into parsed.json (needed for hreflang reciprocity check)
 python -c "
-import json, sys
+import json
 p = json.load(open('$PAGE_DIR/parsed.json'))
 p['_page_url'] = '$PAGE_URL'
-# Detect viewport meta from raw HTML
 with open('$PAGE_DIR/page.html') as f:
-    p['_viewport_present'] = 'name=\"viewport\"' in f.read() or \"name='viewport'\" in open('$PAGE_DIR/page.html').read()
+    html = f.read()
+p['_viewport_present'] = ('name=\"viewport\"' in html) or (\"name='viewport'\" in html)
 json.dump(p, open('$PAGE_DIR/parsed.json','w'), indent=2)
 "
 
 # Schema validation (deprecated types, self-serving reviews, expired entities)
-python scripts/schema_validate.py "$PAGE_DIR/page.html" --out "$PAGE_DIR/schema.json"
+python "$SKILL_DIR/scripts/schema_validate.py" "$PAGE_DIR/page.html" --out "$PAGE_DIR/schema.json"
 
 # PageSpeed Insights (lab + CrUX field data) — skip if no API key
-[ -n "$PAGESPEED_API_KEY" ] && python scripts/pagespeed_check.py "$PAGE_URL" --strategy mobile --json > "$PAGE_DIR/psi.json"
+[ -n "$PAGESPEED_API_KEY" ] && python "$SKILL_DIR/scripts/pagespeed_check.py" "$PAGE_URL" --strategy mobile --json > "$PAGE_DIR/psi.json"
 
 # Lighthouse CLI — optional, slower but exhaustive
-which lighthouse >/dev/null && python scripts/lighthouse_run.py "$PAGE_URL" --out "$PAGE_DIR/lighthouse.json"
+which lighthouse >/dev/null && python "$SKILL_DIR/scripts/lighthouse_run.py" "$PAGE_URL" --out "$PAGE_DIR/lighthouse.json"
 ```
 
 You can run pages in parallel (4 concurrent works well). Cap to `--max-pages 10` for quick smoke audits.
@@ -90,7 +103,7 @@ You can run pages in parallel (4 concurrent works well). Cap to `--max-pages 10`
 ### 4. Gather facts
 
 ```bash
-python scripts/gather_facts.py "$OUT" --out "$OUT/facts.json"
+python "$SKILL_DIR/scripts/gather_facts.py" "$OUT" --out "$OUT/facts.json"
 ```
 
 Merges crawl + robots + per-page subreports into the fact-path schema used by `docs/rules.yaml`.
@@ -98,13 +111,13 @@ Merges crawl + robots + per-page subreports into the fact-path schema used by `d
 ### 5. Evaluate rules
 
 ```bash
-python scripts/rules_engine.py --facts "$OUT/facts.json" --rules docs/rules.yaml --out "$OUT/audit.json"
+python "$SKILL_DIR/scripts/rules_engine.py" --facts "$OUT/facts.json" --rules "$SKILL_DIR/docs/rules.yaml" --out "$OUT/audit.json"
 ```
 
 ### 6. Render Markdown
 
 ```bash
-python scripts/render_report.py "$OUT/audit.json" --out "$OUT/audit.md"
+python "$SKILL_DIR/scripts/render_report.py" "$OUT/audit.json" --out "$OUT/audit.md"
 ```
 
 Show the user the verdict line and a summary, then the path to both artifacts.
