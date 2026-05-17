@@ -1,5 +1,8 @@
 # google-audit
 
+[![skills.sh](https://skills.sh/b/wishfyai/google-seo-geo-aeo-audit-skill)](https://skills.sh/wishfyai/google-seo-geo-aeo-audit-skill)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A Claude Code skill that audits any website against the best practices **Google itself publishes** for Search, AI Overviews, AI Mode, and Core Web Vitals — plus the cross-LLM retrieval layer that gates visibility in ChatGPT Search, Perplexity, Microsoft Copilot, and Claude web search.
 
 Every finding cites the Google or provider doc it traces to. Thresholds are Google's verbatim numbers. The scoring rubric is **Not Ready / Competitive / Leading** — not a Lighthouse 0–100.
