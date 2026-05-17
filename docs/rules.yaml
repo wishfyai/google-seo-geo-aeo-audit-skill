@@ -1,0 +1,676 @@
+# google-audit — source-of-truth checklist
+#
+# Every rule maps to a Google-published doc (source.url) or a recognized
+# provider doc (only for cross-llm-access category). Severity is MUST / SHOULD /
+# NICE per the doc-#3 scoring rubric. Numeric thresholds use Google's exact
+# verbatim numbers — no Lighthouse 0–100 obfuscation.
+#
+# Fact-path conventions used by check.fact:
+#   site.*       — site-level facts produced by robots_inspect / crawl_site
+#   page.*       — per-page facts produced by fetch_page / parse_html / schema_validate
+#   crux.*       — per-page facts produced by pagespeed_check (CrUX field data)
+#   lh.*         — per-page facts produced by lighthouse_run (lab data)
+#
+# Supported check.op values (see rules_engine.py):
+#   equals, not_equals, less_than_or_equal, greater_than_or_equal
+#   exists, not_exists, truthy, falsy
+#   none_of (value not in list), any_of (value in list)
+#   contains, not_contains
+#   length_at_most, length_at_least
+#   matches_re
+
+# =============================================================================
+# Category: crawl-index
+# =============================================================================
+
+- id: crawl.entry-200
+  category: crawl-index
+  severity: must
+  scope: per-site
+  title: "Entry URL returns HTTP 200"
+  rationale: >
+    Only 200-status HTML pages can be indexed. 4xx/5xx at the entry URL means
+    the site is invisible to Google and AI retrieval crawlers.
+  source:
+    url: https://developers.google.com/search/docs/essentials/technical
+  check: { fact: site.entry_status, op: equals, value: 200 }
+  fix_hint: >
+    Ensure the entry URL resolves with HTTP 200. Inspect 301/302 chains; the
+    final URL should be canonical.
+
+- id: crawl.crawlable
+  category: crawl-index
+  severity: must
+  scope: per-site
+  title: "Googlebot is not blocked at robots.txt or CDN"
+  rationale: >
+    A robots.txt allow is useless if the CDN/WAF blocks Googlebot. Verify both
+    layers.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers
+  check: { fact: site.googlebot_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove Disallow lines targeting Googlebot. At the CDN/WAF (Cloudflare,
+    Akamai, AWS WAF) verify Googlebot is on the allow-list via reverse DNS
+    (googlebot.com / google.com), not just by user-agent string.
+
+# =============================================================================
+# Category: robots-directives
+# =============================================================================
+
+- id: robots.root-location
+  category: robots-directives
+  severity: must
+  scope: per-site
+  title: "robots.txt served at /robots.txt with HTTP 200"
+  rationale: >
+    robots.txt must be at the host root. A 404 means Google assumes everything
+    is allowed, but it also breaks sitemap discovery and crawler hinting.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
+  check: { fact: site.robots_status, op: equals, value: 200 }
+  fix_hint: >
+    Serve robots.txt at /robots.txt on the canonical host with HTTP 200, UTF-8,
+    under 500 KiB.
+
+- id: robots.size-limit
+  category: robots-directives
+  severity: should
+  scope: per-site
+  title: "robots.txt is ≤ 500 KiB"
+  rationale: >
+    Google parses only the first 500 KiB of robots.txt; bytes beyond that are
+    ignored.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
+  check: { fact: site.robots_size_bytes, op: less_than_or_equal, value: 512000 }
+  fix_hint: >
+    Trim robots.txt. Move large path lists into Disallow patterns or noindex.
+
+- id: robots.assets-not-blocked
+  category: robots-directives
+  severity: must
+  scope: per-site
+  title: "CSS and JS asset paths are NOT disallowed in robots.txt"
+  rationale: >
+    Google renders with headless Chromium. Disallowed CSS/JS breaks rendering,
+    invalidates layout-dependent ranking signals, and hides content from AI
+    retrieval crawlers.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+  check: { fact: site.robots_asset_blocks, op: length_at_most, value: 0 }
+  fix_hint: >
+    Remove Disallow lines for /static/, /assets/, /_next/, /dist/, /css/,
+    /js/, /scripts/. If a path must be Disallow-ed for non-Google bots, add
+    a Googlebot-specific Allow override.
+
+- id: robots.googlebot-crawl-delay
+  category: robots-directives
+  severity: nice
+  scope: per-site
+  title: "Crawl-delay for Googlebot is omitted (Google ignores it)"
+  rationale: >
+    Googlebot ignores Crawl-delay. The directive is harmless but signals a
+    misunderstanding of Google's crawling controls; control crawl rate in
+    Search Console instead.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
+  check: { fact: site.googlebot_crawl_delay_present, op: equals, value: false }
+  fix_hint: >
+    Remove Crawl-delay from any Googlebot group. Bingbot honors it; keep it
+    only in Bingbot-specific groups if needed.
+
+- id: robots.sitemap-declared
+  category: robots-directives
+  severity: should
+  scope: per-site
+  title: "robots.txt references the XML sitemap"
+  rationale: >
+    A Sitemap: directive in robots.txt aids discovery for Google, Bing, and
+    AI retrieval crawlers that consult it.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview
+  check: { fact: site.robots_sitemaps_declared, op: length_at_least, value: 1 }
+  fix_hint: >
+    Add `Sitemap: https://example.com/sitemap.xml` (absolute URL) to robots.txt.
+
+# =============================================================================
+# Category: sitemaps
+# =============================================================================
+
+- id: sitemap.exists
+  category: sitemaps
+  severity: should
+  scope: per-site
+  title: "Sitemap discovered via robots.txt or /sitemap.xml"
+  rationale: >
+    A sitemap accelerates discovery, especially for large sites and pages
+    weakly linked from the homepage.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview
+  check: { fact: site.sitemap_urls_found, op: greater_than_or_equal, value: 1 }
+  fix_hint: >
+    Publish a sitemap and reference it from robots.txt. Limit each child
+    sitemap to ≤50,000 URLs and ≤50 MB uncompressed.
+
+# =============================================================================
+# Category: security
+# =============================================================================
+
+- id: security.https
+  category: security
+  severity: must
+  scope: per-site
+  title: "Site served over HTTPS"
+  rationale: >
+    HTTPS is a confirmed ranking signal since 2014 and a canonicalization
+    signal. Browser warnings on HTTP pages also depress user trust.
+  source:
+    url: https://developers.google.com/search/docs/advanced/security/https
+  check: { fact: site.scheme, op: equals, value: https }
+  fix_hint: >
+    Configure a valid certificate and 301 redirect all HTTP → HTTPS.
+
+# =============================================================================
+# Category: rendering
+# =============================================================================
+
+- id: rendering.content-in-html
+  category: rendering
+  severity: must
+  scope: per-page
+  title: "Primary content is present in the rendered HTML (not JS-only)"
+  rationale: >
+    Public ranking pages must SSR/SSG or pre-render. Pure CSR delays indexing
+    and is invisible to most non-Google LLM retrieval crawlers, which render
+    JS poorly or not at all.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+  check: { fact: page.word_count, op: greater_than_or_equal, value: 50 }
+  fix_hint: >
+    Adopt SSR/SSG/ISR/streaming SSR. For Next.js use the App Router with
+    Metadata API; for Vue/Nuxt use SSR; for React-CSR migrate or pre-render.
+
+- id: rendering.noindex-not-in-initial-html
+  category: rendering
+  severity: must
+  scope: per-page
+  title: "Page does not ship `<meta robots=noindex>` in initial HTML expecting JS removal"
+  rationale: >
+    When Google sees noindex in initial HTML it may skip JS rendering
+    entirely — so JS that "removes" the tag never runs.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+  check: { fact: page.meta_robots_contains_noindex, op: equals, value: false }
+  fix_hint: >
+    Default to no robots meta tag (indexable). Add noindex via the server
+    response, not via client-side mutation.
+
+# =============================================================================
+# Category: canonicalization
+# =============================================================================
+
+- id: canonical.self-referencing
+  category: canonicalization
+  severity: must
+  scope: per-page
+  title: "Self-referencing canonical with absolute URL"
+  rationale: >
+    Every indexable page should declare its own canonical with an absolute URL
+    in <head>. Prevents duplicate-content fragmentation across parameter
+    variants.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+  check: { fact: page.canonical_present_absolute, op: equals, value: true }
+  fix_hint: >
+    Inject `<link rel="canonical" href="https://example.com/this-page" />`
+    in <head> of the source HTML.
+
+# =============================================================================
+# Category: architecture
+# =============================================================================
+
+- id: arch.title-present
+  category: architecture
+  severity: should
+  scope: per-page
+  title: "Unique, descriptive <title> tag"
+  rationale: >
+    The title is the strongest single signal of page topic for both classic
+    search results and AI snippet extraction.
+  source:
+    url: https://developers.google.com/search/docs/appearance/title-link
+  check: { fact: page.title, op: truthy }
+  fix_hint: >
+    Set a descriptive title per page. Avoid templated/boilerplate titles.
+
+- id: arch.meta-description
+  category: architecture
+  severity: should
+  scope: per-page
+  title: "Meta description present"
+  rationale: >
+    Google may rewrite the description, but it still seeds snippet extraction
+    and AI summarization.
+  source:
+    url: https://developers.google.com/search/docs/appearance/snippet
+  check: { fact: page.meta_description, op: truthy }
+  fix_hint: >
+    Add unique `<meta name="description" content="...">` per page.
+
+- id: arch.viewport
+  category: architecture
+  severity: must
+  scope: per-page
+  title: "<meta name=viewport> declared"
+  rationale: >
+    Mobile-first indexing has been fully rolled out (July 5, 2024). A missing
+    viewport meta produces a desktop-zoomed mobile render and hurts CWV.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites-mobile-first-indexing
+  check: { fact: page.viewport_present, op: equals, value: true }
+  fix_hint: >
+    Add `<meta name="viewport" content="width=device-width, initial-scale=1">`.
+
+- id: arch.h1-present
+  category: architecture
+  severity: should
+  scope: per-page
+  title: "At least one H1 present"
+  rationale: >
+    A clear H1 anchors topic for both crawlers and AI passage extraction.
+  source:
+    url: https://developers.google.com/search/docs/fundamentals/seo-starter-guide
+  check: { fact: page.h1_count, op: greater_than_or_equal, value: 1 }
+  fix_hint: >
+    Use one descriptive H1 per page; nested H2/H3 should form a logical
+    outline.
+
+# =============================================================================
+# Category: international
+# =============================================================================
+
+- id: intl.hreflang-reciprocal
+  category: international
+  severity: nice
+  scope: per-page
+  title: "If hreflang annotations exist, each variant lists itself"
+  rationale: >
+    Hreflang reciprocity is mandatory. Single-direction annotations are
+    ignored.
+  source:
+    url: https://developers.google.com/search/docs/specialty/international/localized-versions
+  check: { fact: page.hreflang_self_referenced, op: equals, value: true }
+  fix_hint: >
+    Each variant must list itself plus every other variant. Use absolute URLs.
+
+# =============================================================================
+# Category: performance-cwv
+# =============================================================================
+
+- id: cwv.lcp
+  category: performance-cwv
+  severity: should
+  scope: per-page
+  title: "Largest Contentful Paint at p75 mobile ≤ 2.5 s"
+  rationale: >
+    LCP is one of three Core Web Vitals used as a tiebreaker ranking signal
+    and a UX factor for both classic Search and AI Overviews.
+  source:
+    url: https://web.dev/articles/lcp
+    quote: "A good LCP score is 2.5 seconds or less, measured at the 75th percentile of page loads."
+  check:
+    fact: crux.p75.lcp_seconds
+    op: less_than_or_equal
+    good: 2.5
+    needs_improvement: 4.0
+  fix_hint: >
+    Preload the hero image with fetchpriority=high. Never lazy-load the LCP
+    image. SSR/SSG yields lower LCP than CSR. Inline critical CSS.
+
+- id: cwv.inp
+  category: performance-cwv
+  severity: should
+  scope: per-page
+  title: "Interaction to Next Paint at p75 mobile ≤ 200 ms"
+  rationale: >
+    INP replaced FID as a Core Web Vital on March 12, 2024. It measures the
+    longest user-interaction latency.
+  source:
+    url: https://web.dev/articles/inp
+    quote: "An INP of 200 milliseconds or less is considered good."
+  check:
+    fact: crux.p75.inp_ms
+    op: less_than_or_equal
+    good: 200
+    needs_improvement: 500
+  fix_hint: >
+    Break long tasks with scheduler.yield(). Defer non-critical third-party JS.
+    Move heavy CPU work to Web Workers.
+
+- id: cwv.cls
+  category: performance-cwv
+  severity: should
+  scope: per-page
+  title: "Cumulative Layout Shift at p75 mobile ≤ 0.10"
+  rationale: >
+    CLS measures unexpected layout shifts during the lifetime of the page.
+  source:
+    url: https://web.dev/articles/cls
+    quote: "A good CLS score is 0.1 or less."
+  check:
+    fact: crux.p75.cls
+    op: less_than_or_equal
+    good: 0.10
+    needs_improvement: 0.25
+  fix_hint: >
+    Set width/height on every <img>, <video>, <iframe>, and embed. Reserve
+    space for ads. Use font-display: optional or size-adjust fallbacks.
+
+- id: cwv.ttfb
+  category: performance-cwv
+  severity: nice
+  scope: per-page
+  title: "Time to First Byte at p75 mobile ≤ 0.8 s"
+  rationale: >
+    TTFB sets the floor for LCP. Edge SSR + CDN caching keeps it low.
+  source:
+    url: https://web.dev/articles/ttfb
+  check:
+    fact: crux.p75.ttfb_seconds
+    op: less_than_or_equal
+    good: 0.8
+    needs_improvement: 1.8
+  fix_hint: >
+    CDN with HTTP/3, Brotli, edge caching. Eliminate redirect chains. Consider
+    103 Early Hints.
+
+# =============================================================================
+# Category: entity-graph
+# =============================================================================
+
+- id: schema.organization-present
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "Organization JSON-LD present"
+  rationale: >
+    Organization is the strongest entity-graph signal. It is referenced by
+    every Article/Product/WebPage entity on the site and feeds Google's
+    Knowledge Graph + LLM entity grounding.
+  source:
+    url: https://developers.google.com/search/docs/appearance/structured-data/organization
+  check: { fact: page.schema_has_organization, op: equals, value: true }
+  fix_hint: >
+    Add Organization JSON-LD with name, url, logo, and sameAs to Wikidata,
+    Wikipedia, and official socials.
+
+- id: schema.webpage-present
+  category: entity-graph
+  severity: nice
+  scope: per-page
+  title: "WebPage JSON-LD present"
+  rationale: >
+    WebPage anchors the page entity and links Article/Product/etc. via
+    isPartOf and mainEntityOfPage.
+  source:
+    url: https://schema.org/WebPage
+  check: { fact: page.schema_has_webpage, op: equals, value: true }
+  fix_hint: >
+    Include a WebPage entity in your @graph with a stable @id matching the URL.
+
+- id: schema.breadcrumb-present
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "BreadcrumbList JSON-LD on hierarchical pages"
+  rationale: >
+    BreadcrumbList enables the breadcrumb trail in SERPs and supplies a
+    taxonomy signal for AI passage scoping.
+  source:
+    url: https://developers.google.com/search/docs/appearance/structured-data/breadcrumb
+  check: { fact: page.schema_has_breadcrumb, op: equals, value: true }
+  fix_hint: >
+    Generate BreadcrumbList JSON-LD from your URL hierarchy; positions must
+    be 1-based and sequential.
+
+- id: schema.no-howto
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "No deprecated HowTo schema (rich result retired 2024)"
+  rationale: >
+    HowTo rich results were fully retired in 2024. The markup is ignored by
+    Google; leaving it carries no penalty but signals stale templates.
+  source:
+    url: https://developers.google.com/search/blog/2023/08/howto-faq-changes
+  check: { fact: page.schema_has_deprecated_howto, op: equals, value: false }
+  fix_hint: >
+    Migrate HowTo steps to visible H2/H3 + VideoObject where applicable.
+    Remove the JSON-LD.
+
+- id: schema.no-faqpage
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "No deprecated FAQPage schema (rich result sunset May 7, 2026 except gov/health)"
+  rationale: >
+    FAQPage rich results were restricted to government/health domains in
+    August 2023 and fully sunset May 7, 2026 for everyone else.
+  source:
+    url: https://developers.google.com/search/blog/2023/08/howto-faq-changes
+  check: { fact: page.schema_has_deprecated_faqpage, op: equals, value: false }
+  fix_hint: >
+    Convert FAQs into visible Q&A under H2/H3 headings. Remove FAQPage
+    JSON-LD unless your domain is genuinely government or health.
+
+- id: schema.no-self-serving-review
+  category: entity-graph
+  severity: must
+  scope: per-page
+  title: "No self-serving review/aggregateRating on Organization or LocalBusiness"
+  rationale: >
+    Marking your own Organization/LocalBusiness with review or
+    aggregateRating violates Google's structured-data guidelines and triggers
+    manual actions.
+  source:
+    url: https://developers.google.com/search/docs/appearance/structured-data/sd-policy
+  check: { fact: page.schema_self_serving_reviews_count, op: equals, value: 0 }
+  fix_hint: >
+    Remove review/aggregateRating from Organization/LocalBusiness JSON-LD.
+    Use Product or specific service pages with third-party reviews instead.
+
+- id: schema.no-sitelinks-searchaction
+  category: entity-graph
+  severity: nice
+  scope: per-page
+  title: "No deprecated potentialAction SearchAction (sitelinks search box deprecated Nov 21, 2024)"
+  rationale: >
+    Sitelinks search box was deprecated November 21, 2024.
+    potentialAction.SearchAction no longer produces a search box.
+  source:
+    url: https://developers.google.com/search/docs/appearance/sitelinks
+  check: { fact: page.schema_has_sitelinks_searchaction, op: equals, value: false }
+  fix_hint: >
+    Drop potentialAction.SearchAction from WebSite JSON-LD. The WebSite type
+    itself is still supported for site names.
+
+- id: schema.no-expired-events
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "No Event JSON-LD with endDate in the past"
+  rationale: >
+    Expired Event markup left live triggers Search Console enhancement
+    warnings and can lead to manual actions.
+  source:
+    url: https://developers.google.com/search/docs/appearance/structured-data/event
+  check: { fact: page.schema_expired_events_count, op: equals, value: 0 }
+  fix_hint: >
+    Remove or update Event JSON-LD when an event ends. Set validThrough on
+    JobPosting accurately.
+
+- id: schema.no-expired-jobs
+  category: entity-graph
+  severity: should
+  scope: per-page
+  title: "No JobPosting JSON-LD with validThrough in the past"
+  rationale: >
+    Expired JobPosting markup left live triggers manual actions.
+  source:
+    url: https://developers.google.com/search/docs/appearance/structured-data/job-posting
+  check: { fact: page.schema_expired_jobs_count, op: equals, value: 0 }
+  fix_hint: >
+    Set validThrough accurately and remove JobPosting JSON-LD when a job
+    closes.
+
+# =============================================================================
+# Category: content-quality (heuristic — confirms presence of E-E-A-T markers)
+# =============================================================================
+
+- id: content.images-have-alt
+  category: content-quality
+  severity: should
+  scope: per-page
+  title: "≥ 80% of images have non-empty alt text (decorative images may use alt='')"
+  rationale: >
+    Alt text is both accessibility and image-search signal. CSS background
+    images are not indexed by Google.
+  source:
+    url: https://developers.google.com/search/docs/appearance/google-images
+  check: { fact: page.images_alt_coverage, op: greater_than_or_equal, value: 0.8 }
+  fix_hint: >
+    Add descriptive alt to informative images; empty alt="" on decorative.
+    Avoid keyword-stuffing alt text.
+
+# =============================================================================
+# Category: ai-search-controls
+# =============================================================================
+
+- id: ai.snippet-not-disabled
+  category: ai-search-controls
+  severity: should
+  scope: per-page
+  title: "Page is not snippet-disabled (no `nosnippet` unless intentional)"
+  rationale: >
+    nosnippet, aggressive max-snippet, and data-nosnippet remove the page from
+    featured snippets AND AI Overviews. Google-Extended does NOT control AI
+    Overviews — only these snippet controls do.
+  source:
+    url: https://developers.google.com/search/docs/appearance/ai-features
+  check: { fact: page.meta_robots_contains_nosnippet, op: equals, value: false }
+  fix_hint: >
+    Remove nosnippet unless you deliberately want to exclude the page from
+    snippets and AI Overviews.
+
+# =============================================================================
+# Category: cross-llm-access
+# =============================================================================
+
+- id: llm.bingbot-allowed
+  category: cross-llm-access
+  severity: must
+  scope: per-site
+  title: "Bingbot is allowed (powers Copilot + much of ChatGPT Search)"
+  rationale: >
+    Bing's index drives Microsoft Copilot and substantially powers ChatGPT
+    Search. Blocking Bingbot makes the site invisible across both.
+  source:
+    url: https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+  check: { fact: site.bingbot_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove any Disallow targeting Bingbot. Verify the CDN allows it.
+
+- id: llm.oai-searchbot-allowed
+  category: cross-llm-access
+  severity: must
+  scope: per-site
+  title: "OAI-SearchBot is allowed (ChatGPT Search index)"
+  rationale: >
+    OAI-SearchBot crawls for the ChatGPT Search index. Blocking it removes
+    the site from ChatGPT Search results — separate from GPTBot, which is
+    only about model training.
+  source:
+    url: https://platform.openai.com/docs/bots
+  check: { fact: site.oai_searchbot_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove Disallow lines targeting OAI-SearchBot. Note that blocking GPTBot
+    is a separate IP/training decision and does NOT remove the site from
+    ChatGPT Search.
+
+- id: llm.chatgpt-user-allowed
+  category: cross-llm-access
+  severity: must
+  scope: per-site
+  title: "ChatGPT-User is allowed (user-triggered fetches in ChatGPT)"
+  rationale: >
+    ChatGPT-User is fired when a user-initiated action causes ChatGPT to
+    fetch a URL. Blocking it breaks user-initiated lookups of your pages.
+  source:
+    url: https://platform.openai.com/docs/bots
+  check: { fact: site.chatgpt_user_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove any Disallow targeting ChatGPT-User.
+
+- id: llm.perplexitybot-allowed
+  category: cross-llm-access
+  severity: must
+  scope: per-site
+  title: "PerplexityBot is allowed (Perplexity index)"
+  rationale: >
+    PerplexityBot crawls for Perplexity's retrieval index. Blocking it
+    removes the site from Perplexity answers.
+  source:
+    url: https://docs.perplexity.ai/guides/bots
+  check: { fact: site.perplexitybot_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove Disallow lines targeting PerplexityBot.
+
+- id: llm.perplexity-user-allowed
+  category: cross-llm-access
+  severity: must
+  scope: per-site
+  title: "Perplexity-User is allowed (user-triggered fetches in Perplexity)"
+  rationale: >
+    Perplexity-User is fired for user-initiated fetches inside Perplexity.
+  source:
+    url: https://docs.perplexity.ai/guides/bots
+  check: { fact: site.perplexity_user_allowed_root, op: equals, value: true }
+  fix_hint: >
+    Remove any Disallow targeting Perplexity-User.
+
+- id: llm.google-extended-not-misused
+  category: cross-llm-access
+  severity: nice
+  scope: per-site
+  title: "Don't expect Google-Extended in robots.txt to remove the site from AI Overviews"
+  rationale: >
+    Google-Extended only controls Gemini app + Vertex AI training/grounding.
+    It does NOT affect AI Overviews or AI Mode. The only way to remove a
+    page from AI Overviews is `noindex` or `nosnippet`, which also remove
+    snippet eligibility entirely.
+  source:
+    url: https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers
+  check: { fact: site.google_extended_misuse_signal, op: equals, value: false }
+  fix_hint: >
+    Informational only — if Google-Extended is Disallow-ed and the site
+    expected that to opt out of AI Overviews, that expectation is wrong.
+    Use `noindex`/`nosnippet`/`max-snippet`/`data-nosnippet` for AI Overview
+    control.
+
+- id: llm.llms-txt-informational
+  category: cross-llm-access
+  severity: nice
+  scope: per-site
+  title: "/llms.txt is informational only — no major AI provider has confirmed using it"
+  rationale: >
+    /llms.txt is a proposed convention. Google has stated it does not use it,
+    and no major AI provider has confirmed using it for ranking or retrieval.
+    Adding it is harmless but it is NOT a ranking lever and does NOT
+    substitute for crawlable HTML.
+  source:
+    url: https://llmstxt.org/
+  check: { fact: site.llms_txt_present, op: exists }
+  fix_hint: >
+    Informational. Do not rely on llms.txt in place of fundamentals; the
+    audit reports its presence but does not score it.

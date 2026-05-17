@@ -1,0 +1,24 @@
+{
+  "name": "google-audit",
+  "version": "0.1.0",
+  "description": "Audit any website against Google's published best practices for Search, AI Overviews, AI Mode, Core Web Vitals, and the cross-LLM retrieval layer (ChatGPT Search, Perplexity, Copilot, Claude web search). Every finding cites the Google doc it references.",
+  "keywords": [
+    "seo",
+    "google",
+    "search",
+    "ai-overviews",
+    "ai-mode",
+    "core-web-vitals",
+    "lighthouse",
+    "geo",
+    "aeo",
+    "structured-data",
+    "schema",
+    "audit",
+    "crawl"
+  ],
+  "license": "MIT",
+  "skills": [
+    "skills/google-audit"
+  ]
+}
